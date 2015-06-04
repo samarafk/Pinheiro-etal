@@ -1,1 +1,1 @@
-This folder contains R code to reproduce results from application 2 the manuscript.
+This folder contains R code to reproduce results from application 2 from the manuscript.
