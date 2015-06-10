@@ -1,0 +1,171 @@
+---
+output:
+  html_document:
+    keep_md: yes
+---
+
+Getting the Dataset
+========================================================
+
+We need the list of all accession numbers from [J. Virol. October 1998 vol. 72 no. 10 8240-8251](http://jvi.asm.org/content/72/10/8240.short). Then, for each accession number we need the corresponding sequence and annotation.
+
+```{r,message=FALSE}
+if (!file.exists("./data/Acc.csv") | !file.exists("./data/Seq.rda") | !file.exists("./data/InfoSeq.rda"))
+  {
+  library("seqinr")
+  choosebank("genbank")
+  tmp <- query("allsequences", "AU=Poss AND Y=1998") #707
+  t <- sapply(tmp$req, getName, as.string = TRUE)
+  write.csv(t,file="./data/Acc.csv",row.names = FALSE)
+  Seq <- getSequence(tmp$req)
+  InfoSeq <- getAnnot(tmp$req,"features")
+  closebank()
+  save(Seq,file="./data/Seq.rda")
+  save(InfoSeq,file="./data/InfoSeq.rda")
+  }
+```
+
+
+```{r,echo=FALSE}
+load("./data/Seq.rda")
+load("./data/InfoSeq.rda")
+totseq <- length(Seq)
+```
+
+There is a total of `r totseq` sequences.
+
+We created a dataframe, `DataInfo`, with the following columns: Patient, Isolate, Clone, Region, Accession, SampleNumber, Location, Date.
+
+```{r,echo=FALSE}
+
+if (!file.exists("./data/DataInfo.rda"))
+  {
+  Patient <- c()
+  Accession <- c()
+  Isolate <- c()
+  Clone <- c()
+  Region <- c()
+  SampleNumber <- c()
+  Location <- c()
+  Date <- c()
+
+  for (i in 1:length(InfoSeq))
+      {
+          Patient[i] <- substr(strsplit(InfoSeq[[i]][2],"patient ")[[1]][2],start=1,stop=3)
+          Isolate[i] <- strsplit(strsplit(InfoSeq[[i]][2],"isolate ")[[1]][2]," clone")[[1]][1]
+          Clone[i] <- strsplit(strsplit(InfoSeq[[i]][2],"clone ")[[1]][2]," from")[[1]][1]
+
+          v1v2 <- grep("V1-V2",InfoSeq[[i]][1:4])
+          v3 <- grep("V3",InfoSeq[[i]][1:4])
+          Region[i] <- ifelse(length(v1v2)>0,"V1-V2",ifelse(length(v3)>0,"V3","??"))
+          #Region[i] <- substr(InfoSeq[[i]][3],start=13,stop=nchar(InfoSeq[[i]][3]))
+          tmp <- grep("ACCESSION", InfoSeq[[i]])[1]
+          Accession[i] <- substr(InfoSeq[[i]][tmp],start=13,stop=20)
+          tmp <- grep("sample", InfoSeq[[i]])
+          tmp2 <- strsplit(InfoSeq[[i]][tmp[1]],c("sample ","no. "))[[1]][2]
+          SampleNumber[i] <- substr(tmp2,start=(nchar(tmp2)-11),stop=(nchar(tmp2)-1))
+          tmp3 <- isTRUE(length(grep("plasma",InfoSeq[[i]]))>0)
+          tmp4 <- isTRUE(length(grep("cervical",InfoSeq[[i]]))>0)
+          tmp5 <- isTRUE(length(grep("PBMC",InfoSeq[[i]]))>0)
+          loc <- c(tmp3,tmp4,tmp5)%*%c(1:3)
+          Location[i] <- ifelse(length(loc)==1,c("Plasma","Cervical","PBMC")[loc],"??")
+          tmp6 <- grep("taken in",InfoSeq[[i]])
+          Date[i] <- strsplit(InfoSeq[[i]][tmp6],"taken in ")[[1]][2]
+      }
+
+
+  Date[which(Date=="September")] <- "September 1995\""
+
+  DataInfo <- data.frame(Patient=Patient,Isolate=Isolate,Clone=Clone,Region=Region,               
+  Accession=Accession,SampleNumber=SampleNumber,Location=Location,Date=Date)
+
+  DataInfo$TamanhoSeq <- unlist(lapply(Seq,length))
+
+  save(DataInfo,file="./data/DataInfo.rda")
+  }
+
+```
+
+
+We will work only with sequences from Region V3.
+
+```{r,message=FALSE}
+
+if (!file.exists("./data/V3.rda"))
+
+  {
+  library(Biostrings)
+  library(DECIPHER)
+  tmp <- which(DataInfo[,"Region"]=="V3")
+  V3seq <- sapply(tmp,function(x) paste0(Seq[[x]],collapse=""))
+
+  #BrowseSequences(DNAStringSet(V3seq))
+  alignedV3 <- AlignSeqs(DNAStringSet(V3seq),verbose = FALSE)
+  #BrowseSequences(alignedV3)
+
+  # each row is a sequence
+  SeqV3 <- t(sapply(1:length(alignedV3),function(x) unlist(strsplit(as.character(alignedV3[[x]]),split=character(0)))))
+
+  SeqV3[SeqV3=="-"] <- NA
+
+  DataInfoV3 <- DataInfo[DataInfo[,"Region"]=="V3",]
+
+  save(SeqV3,DataInfoV3,file="./data/V3.rda")
+}
+```
+
+We consider only dates with sequences available for all locations (Plasma, PBMC and Cervical).
+
+```{r}
+load("./data/V3.rda")
+bb <- as.data.frame(xtabs(~Location+Date, data=DataInfoV3,drop.unused.levels = TRUE))
+cc <- unique(bb[which(bb$Freq==0),"Date"])
+
+DataInfoV3Final <- DataInfoV3[-which(DataInfoV3$Date %in% cc),]
+SeqV3Final <- SeqV3[-which(DataInfoV3$Date %in% cc),]
+
+N <- dim(SeqV3Final)[1]
+
+DataInfoNew <- DataInfoV3Final
+AllSeqNew <- SeqV3Final
+
+DataInfoNew$Group <- DataInfoNew$Location
+DataInfoNew$Visit <- DataInfoNew$Date
+
+save(DataInfoNew,file="./data/DataInfoNew.rda")
+save(AllSeqNew,file="./data/AllSeqNew.rda")
+```
+
+
+The dataset used in the analysis contains `r N` sequences.
+
+```{r}
+
+xtabs(~Date+Location+Patient, data=DataInfoV3Final,drop.unused.levels = TRUE)
+```
+
+
+The following table presents the number of sequences per patient, date, location and region.
+
+```{r,echo=FALSE}
+
+aa <- aggregate(DataInfoV3Final$Clone,by=list(Patient=DataInfoV3Final$Patient,Date=DataInfoV3Final$Date,Location=DataInfoV3Final$Location),function(x) length(unique(as.character(x))))
+colnames(aa) <- c("Patient","Date","Location","Freq")
+
+aa <- aa[order(aa[,1]),]
+
+library(knitr)
+kable(aa, format = "markdown",row.names=FALSE)
+write.csv(aa,file="./data/tabela.csv")
+
+```
+
+
+The next table presents the number of sequences per patient, location and size (number of nucleotides in the sequence):
+
+```{r,echo=FALSE}
+bb <- aggregate(DataInfoV3Final[,1],by=list(DataInfoV3Final$Patient,DataInfoV3Final$Location,DataInfoV3Final$TamanhoSeq),function(x) length(x))
+bb <- bb[order(bb[,1],bb[,2]),]
+colnames(bb) <- c("Patient","Location","TamanhoSeq","Freq")
+kable(bb, format = "markdown",row.names=FALSE)
+```

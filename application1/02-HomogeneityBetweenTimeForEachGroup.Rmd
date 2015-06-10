@@ -1,0 +1,274 @@
+---
+output:
+  html_document:
+    keep_md: yes
+---
+
+
+Homogeneity between times for each group
+========================================================
+
+
+If one wants to test the time effect taking out the group and individual effect, the structure of groups and individuals should be preserved. So, for each $b=1,\ldots,B$: 
+
+ 1. sample with replacement (w.r.) from the $m_{ig\cdot}$ sequences within each individual ignoring the time structure, i.e., take a sample w.r. of sequences from the pooled sample of sequences from each individual combining times. The first $m_{ig1}$ sequences will be from time 1, the second $m_{ig2}$ from time 2 and so on.
+2. compute the vector $\mathbf{B}_{nb} = (BT_{1_b}, BT_{2_b}, \ldots , BT_{Gb})$ for each $b=1, \ldots B$.
+3. standardize each $BT_{g_b}$ ($g=1, \ldots , G$), i.e., subtract the mean and standard deviation of the $B$ values of $BT_{g_b}'s$. 
+4. compute the appropriate $\mathbf{T}_{nb}=\mathbf{C}\mathbf{B}_{nb}$.
+
+The code for this procedure is:
+
+```{r}
+if (!file.exists("./data/DataBoot.rda"))
+  {
+load("./data/AllSeqNew.rda")
+load("./data/DataInfoNew.rda")
+
+DataBoot <- DataInfoNew[,c("Group","Patient","Visit")]
+tmp <- unique(DataBoot[,c("Group","Patient")])
+B=2000
+IndexBoot <- matrix(NA,ncol=B,nrow=dim(DataInfoNew)[1])
+set.seed(2014)
+
+  for (b in 1:B)
+     {
+          tmpIndexBoot <- c()
+          for (i in 1:dim(tmp)[1])
+              {
+                  index <- which(DataInfoNew$Group==tmp[i,"Group"] &
+                                 DataInfoNew$Patient==tmp[i,"Patient"])
+                  if (length(index)>1)
+                      {
+                          tmpIndexBoot <- sample(index,replace=TRUE)
+                      }
+                  else
+                      {
+                          tmpIndexBoot <- index
+                      }
+           IndexBoot[index,b] <- tmpIndexBoot
+              }
+      }
+
+DataBoot$IndexOriginal <- 1:dim(DataBoot)[1]
+DataBoot <- cbind(DataBoot,IndexBoot)
+save(DataBoot,file="./data/DataBoot.rda")
+}
+```
+
+After generating all boostrap indexes, we need to compute the statistics for each bootstrap sample.
+
+```{r,message=FALSE,warning=FALSE}
+if (!file.exists("./data/Rboot.rda"))
+{
+load("./data/AllSeqNew.rda")
+load("./data/DataInfoNew.rda")
+load("./data/DataBoot.rda")
+
+library(ape)
+
+IndexOrig=DataBoot[,4]
+SequenceMatrix <- AllSeqNew[IndexOrig,]
+
+AllDistances <- as.matrix(dist.gene(SequenceMatrix,method="percentage",pairwise.deletion=TRUE))
+
+source("./function/distances.R")
+
+Rboot <- list()
+B <- dim(DataBoot)[2]-3
+# checking if the group/visit label are in the same order
+  DataBoot$Group==DataInfoNew$Group # should be true
+  DataBoot$Visit==DataInfoNew$Visit # should be true
+
+for (b in 1:B)
+    {
+        Rboot[[b]] <- distances(AllDistances=AllDistances,Group=DataBoot$Group,Time=DataBoot$Visit,Index=DataBoot[,b+3])
+      }
+
+save(Rboot,file="./data/Rboot.rda")
+}
+```
+
+We now calculate $\mathbf{B}_n=(BT_1,BT_2,BT_3)$ for the original sample and the bootstrap samples.
+
+$BT_g=\sum_{t<t'}\frac{m_{.gt}m_{.gt'}}{N(N-1)}(2\bar{R}_{gt;gt'}-\bar{R}_{gt;gt}-\bar{R}_{gt';gt'})$, $g=1,\ldots, 3$ for testing the homogeneity of time (1 and 2) for each group (P, SP, RP).
+
+```{r}
+load("./data/Rboot.rda")
+load("./data/DataBoot.rda")
+
+tmp <- as.data.frame(table(DataBoot$Group))
+minSeq <- which(tmp$Freq==min(tmp$Freq))
+n <- tmp$Freq[minSeq]
+
+```
+
+```{r}
+if(! file.exists("./data/BTg.rda"))
+  {
+  groups <- unique(DataBoot$Group)
+  time <- unique(DataBoot$Visit)
+
+  g <- expand.grid(groups,time) # always use groups and time in this order (keep same order as used in distances.R
+  colnames(g) <- c("groups","time")
+
+  BTg <- matrix(NA,ncol=length(groups),nrow=length(Rboot))
+
+  #library(combinat)
+
+  for (b in 1:length(Rboot))
+      {
+          N <- dim(DataBoot)[1] # total number of sequences
+          Migt <- Rboot[[b]]$Migt # m.gt
+          R <- Rboot[[b]]$R
+
+          for (j in 1:length(groups))
+              {
+                  d <- c()
+                  tmp <- as.character(g[g[,1]==groups[j],2])
+                  aa <- as.matrix(combn(tmp,2),nrow=2) # all pairwise combination of the groups
+
+                  d <- apply(aa,2,function (x)
+                                        {
+                                            tmp1 <- which(g[,1]==groups[j] & g[,2]==x[1])
+                                            tmp2 <- which(g[,1]==groups[j] & g[,2]==x[2])
+                                            rr <- Migt[tmp1]*Migt[tmp2]*(2*R[tmp1,tmp2]-R[tmp1,tmp1]-R[tmp2,tmp2])
+                                            return(rr)
+                                        }
+                             )
+                 BTg[b,j] <- sum(d)/(N*(N-1))
+              }
+      }
+  colnames(BTg) <- c("P","RP","SP")
+
+  save(BTg,file="./data/BTg.rda")
+  
+}
+```
+
+
+```{r,echo=TRUE}
+load("./data/BTg.rda")
+
+# p-values
+
+pvP <- round(length(which(BTg[-1,1]>BTg[1,1]))/(length(Rboot)-1),3)
+pvRP <- round(length(which(BTg[-1,2]>BTg[1,2]))/(length(Rboot)-1),3)
+pvSP <- round(length(which(BTg[-1,3]>BTg[1,3]))/(length(Rboot)-1),3)
+```
+
+```{r,echo=FALSE}
+par(mfrow=c(1,3))
+
+hist(BTg[-1,2],breaks=50,main=bquote(atop("Rapid Progressor","p-value"==.(pvRP))),xlab=" ",ylim=c(0,170),cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BTg[1,2],col="red")
+
+hist(BTg[-1,3],breaks=50,main=bquote(atop("Slow Progressor","p-value"==.(pvSP))),xlab=" ",ylim=c(0,170),cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BTg[1,3],col="red")
+
+hist(BTg[-1,1],breaks=50,main=bquote(atop("Progressor","p-value"==.(pvP))),xlim=c(min(BTg[,1]),max(BTg[,1])),xlab=" ",ylim=c(0,170),cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BTg[1,1],col="red")
+
+```
+
+
+```{r,echo=FALSE}
+plot(density(BTg[-1,2]),main=" ",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,xlim=c(-0.00001,0.00065))
+lines(density(BTg[-1,3]),lty=2)
+lines(density(BTg[-1,1]),lty=3)
+legend("topright",c("Rapid Progressor","Slow Progressor","Progressor"),lty=1:3)
+```
+
+
+```{r,echo=FALSE,message=FALSE,results='hide'}
+pdf("./figures/BTg-smooth.pdf",width=20,height=5)
+plot(density(BTg[-1,2]),main=" ",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,xlim=c(-0.00004,0.0007))
+lines(density(BTg[-1,3]),lty=2)
+lines(density(BTg[-1,1]),lty=3)
+legend("topright",c("Rapid Progressor","Slow Progressor","Progressor"),lty=1:3)
+```
+
+
+```{r,echo=FALSE,message=FALSE,results='hide'}
+pdf("./figures/BTg.pdf",width=15,height=5)
+par(mfrow=c(1,3))
+hist(BTg[-1,2],breaks=50,main=bquote(atop("Rapid Progressor","p-value"==.(pvRP))),xlab=" ",ylim=c(0,170),cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BTg[1,2],col="red")
+
+hist(BTg[-1,3],breaks=50,main=bquote(atop("Slow Progressor","p-value"==.(pvSP))),xlab=" ",ylim=c(0,170),cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BTg[1,3],col="red")
+
+hist(BTg[-1,1],breaks=50,main=bquote(atop("Progressor","p-value"==.(pvP))),xlim=c(min(BTg[,1]),max(BTg[,1])),xlab=" ",ylim=c(0,170),cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BTg[1,1],col="red")
+dev.off()
+```
+
+We then calculate $\mathbf{T}_n=\mathbf{C}\mathbf{B}_n$. First, we standardize each $BT_g$.
+
+
+```{r}
+Tn1 <- (BTg[,"P"]-mean(BTg[,"P"]))/sd(BTg[,"P"]) - (BTg[,"SP"]-mean(BTg[,"SP"]))/sd(BTg[,"SP"]) 
+Tn2 <- (BTg[,"P"]-mean(BTg[,"P"]))/sd(BTg[,"P"]) - (BTg[,"RP"]-mean(BTg[,"RP"]))/sd(BTg[,"RP"])
+Tn <- cbind(Tn1,Tn2)
+save(Tn,file="./data/Tn.rda")
+```
+
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+hist(Tn1[-1],breaks=50,main=expression(T[n1]),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn1[1],col="red")
+
+hist(Tn2[-1],breaks=50,main=expression(T[n2]),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn2[1],col="red")
+```
+
+```{r,echo=FALSE}
+a <- min(Tn1,Tn2)
+b <- max(Tn1,Tn2)
+plot(Tn1[-1],Tn2[-1],ylim=c(a,b),xlim=c(a,b),xlab=expression(T[n1]),ylab=expression(T[n2]),cex.lab=1.2,cex.axis=1,cex.main=1.2)
+points(Tn1[1],Tn2[1],col=1,pch=15)
+abline(v=0)
+abline(h=0)
+```
+
+```{r,echo=FALSE,message=FALSE,results='hide'}
+pdf("./figures/Tn1-Tn2.pdf",width=10,height=10)
+plot(Tn1[-1],Tn2[-1],ylim=c(a,b),xlim=c(a,b),xlab=expression(T[n1]),ylab=expression(T[n2]),cex.lab=1.2,cex.axis=1,cex.main=1.2)
+points(Tn1[1],Tn2[1],col=1,pch=15)
+abline(v=0)
+abline(h=0)
+dev.off()
+pdf("./figures/Tn1-group.pdf",width=10,height=10)
+hist(Tn1[-1],breaks=50,main="",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn1[1],col="red")
+dev.off()
+
+pdf("./figures/Tn2-group.pdf",width=10,height=10)
+hist(Tn2[-1],breaks=50,main="",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn2[1],col="red")
+dev.off()
+
+```
+
+From the data set we compute the observed value of $\mathbf{B}_n$ and $\mathbf{T}_n$, call them $\mathbf{B}_{n obs}$ and $\mathbf{T}_{n obs}$. Compute the p-value as $(\#\mathbf{T}_{nb} >\mathbf{T}_{n obs})/B$. 
+  
+Next, we calculate $\cal{L}_n$.
+```{r}
+load("./data/Tn.rda")
+source("./function/Ln.R")
+Ln
+Ln1 <- Ln(Tn,n)  
+Ln1[1] # Ln Obs
+pvLn <- round(length(which(Ln1[-1]>Ln1[1]))/(length(Ln1)-1),3)
+```
+
+```{r}
+hist(Ln1,breaks=100,main=bquote(atop(L[n],"p-value"==.(pvLn))),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,prob=TRUE)
+abline(v=Ln1[1],col="red")
+```
+
+```{r,echo=FALSE,message=FALSE,results='hide'}
+pdf("./figures/Ln.pdf",width=7,height=7)
+hist(Ln1,breaks=100,main=bquote(atop(L[n],"p-value"==.(pvLn))),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,prob=TRUE)
+abline(v=Ln1[1],col="red")
+dev.off()
+```

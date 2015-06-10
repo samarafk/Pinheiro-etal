@@ -1,0 +1,428 @@
+---
+output:
+  html_document:
+    keep_md: yes
+---
+
+
+Homogeneity between groups for each time - Q23
+========================================================
+
+For *Woman Q23*, we may test homogeneity of groups for each time  (dates: 7/93, 6/94, 11/94, 2/95, 9/95), i.e., we compute $BG_t, t=1, \ldots, 5$. Then, we can test if the homogeneity of groups is the same for all times using  $\mathbf{T}_n=\mathbf{C}\mathbf{B}_n = (T_{n1}, T_{n2}, T_{n3}, T_{n4})$, with $\mathbf{B}_n = (BG_1, BG_2, BG_3, BG_4, BG_5)$ and 
+\[ \mathbf{C} = \left ( \begin{array}{ccccc}
+-1 & 1 & 0 & 0 & 0\\
+-1 & 0 & 1 & 0 & 0 \\
+-1 & 0 & 0 & 1 & 0 \\
+-1 & 0 & 0 & 0 & 1  
+\end{array} 
+\right ) . 
+\]
+
+
+If one wants to test the group effect taking out the time effect, the structure of times should be preserved. So, for each $b=1,\ldots,B$: 
+
+ 1. sample with replacement (w.r.) from the $m_{i\cdot g}$ sequences (i.e., the total number of sequences for individuals $i$ at time $t$) ignoring the group structure. For each time, the first $m_{i1t}$ sequences will be from group 1, the second $m_{i2t}$ from group 2 and so on.
+2. compute the vector $\mathbf{B}_{nb} = (BG_{1_b}, BG_{2_b}, \ldots , BG_{Tb})$ for each $b=1, \ldots B$.
+3. standardize each $BG_{t_b}$ ($t=1, \ldots , T$), i.e., subtract the mean and standard deviation of the $B$ values of $BG_{t_b}'s$. 
+4. compute the appropriate $\mathbf{T}_{nb}=\mathbf{C}\mathbf{B}_{nb}$.
+
+The code for this procedure is:
+
+
+
+```{r}
+
+if (!file.exists("./data/DataBootQ23.rda"))
+  {
+  load("./data/AllSeqNew.rda")
+  load("./data/DataInfoNew.rda")
+  
+  DataInfoNewQ23 <- DataInfoNew[DataInfoNew$Patient=="Q23",]
+  AllSeqNewQ23 <- AllSeqNew[DataInfoNew$Patient=="Q23",]
+  
+  save(DataInfoNewQ23,file="./data/DataInfoNewQ23.rda")
+  save(AllSeqNewQ23,file="./data/AllSeqNewQ23.rda")
+
+
+  DataBoot <- DataInfoNewQ23[,c("Group","Patient","Visit")]
+  tmp <- unique(DataBoot[,c("Patient","Group","Visit")])
+  B=2000
+  IndexBoot <- matrix(NA,ncol=B,nrow=dim(DataInfoNewQ23)[1])
+  set.seed(2014)
+  for (b in 1:B)
+      {
+          tmpIndexBoot <- c()
+          for (i in 1:dim(tmp)[1])
+              {
+                  index <- which(DataInfoNewQ23$Visit==tmp[i,"Visit"] &
+                                 DataInfoNewQ23$Patient==tmp[i,"Patient"])
+                  if (length(index)>1)
+                      {          
+                          tmpIndexBoot <- sample(index,replace=TRUE)
+                      }
+                  else
+                      {
+                          tmpIndexBoot <- index
+                      }
+                  IndexBoot[index,b] <- tmpIndexBoot
+              }
+      }
+  DataBoot$IndexOriginal <- 1:dim(DataBoot)[1]
+  DataBoot <- cbind(DataBoot,IndexBoot)
+  save(DataBoot,file="./data/DataBootQ23.rda")
+  }
+```
+
+After generating all boostrap indexes, we need to compute the statistics for each bootstrap sample.
+
+```{r,warning=FALSE,message=FALSE}
+
+if (!file.exists("./data/RbootQ23.rda")) {
+  load("./data/AllSeqNewQ23.rda")
+  load("./data/DataInfoNewQ23.rda")
+  load("./data/DataBootQ23.rda")
+  library(ape)
+  
+  
+  IndexOrig=DataBoot[,4]
+  SequenceMatrix <- AllSeqNewQ23[IndexOrig,]
+  
+  AllDistances <- as.matrix(dist.gene(SequenceMatrix,method="percentage",pairwise.deletion=TRUE))
+  
+  source("./function/distances.R")
+  
+  Rboot <- list()
+  B <- dim(DataBoot)[2]-3
+  # checking if the group/visit label are in the same order
+  DataBoot$Group==DataInfoNewQ23$Group # should be true
+  DataBoot$Visit==DataInfoNewQ23$Visit # should be true
+  
+  for (b in 1:B) {
+    Rboot[[b]] <- distances(AllDistances=AllDistances,Group=DataBoot$Group,Time=DataBoot$Visit,Index=DataBoot[,b+3])
+    
+  }
+  
+  save(Rboot,file="./data/RbootQ23.rda")
+}
+
+```
+
+We now calculate $\mathbf{B}_n=(BG_1,BG_2,BG_3,BG_4,BG_5)$ for the original sample and the bootstrap samples.
+
+$BG_t=\sum_{g<g'}\frac{m_{.gt}m_{.g't}}{N(N-1)}(2\bar{R}_{gt;g't}-\bar{R}_{gt;gt}-\bar{R}_{g't;g't})$, $t=1,\ldots, 5$ for testing the homogeneity of groups (Plasma, PBMC and Cervical) at each time.
+
+```{r,message=FALSE}
+load("./data/RbootQ23.rda")
+load("./data/DataBootQ23.rda")
+
+tmp <- as.data.frame(table(DataBoot$Group))
+minSeq <- which(tmp$Freq==min(tmp$Freq))
+n <- tmp$Freq[minSeq]
+
+if(! file.exists("./data/BGt23.rda"))
+  {
+  groups <- unique(DataBoot$Group)
+  time <- unique(DataBoot$Visit)
+
+  g <- expand.grid(groups,time) # always use groups and time in this order (keep same order as used in distance.R
+  colnames(g) <- c("groups","time")
+
+  BGt <- matrix(NA,ncol=length(time),nrow=length(Rboot))
+
+  library(combinat)
+
+  for (b in 1:length(Rboot))
+      {
+          N <- dim(DataBoot)[1] # total number of sequences
+          Migt <- Rboot[[b]]$Migt # m.gt
+          R <- Rboot[[b]]$R
+          GroupTime <- Rboot[[b]]$GroupTime
+
+          for (j in 1:length(time))
+              {
+                  d <- c()
+                  tmp <- as.character(g[g[,2]==time[j],1])
+                  aa <- combn(tmp,2) # all pairwise combination of the groups
+
+                  d <- apply(aa,2,function (x)
+                                        {
+                                            tmp1 <- which(Migt[,2]==time[j] & Migt[,1]==x[1])
+                                            tmp2 <- which(Migt[,2]==time[j] & Migt[,1]==x[2])
+                                            
+                                            group1time <- paste(x[1],time[j],sep="|")
+                                            group1timegroup1time <- paste(group1time,group1time,sep="_")
+
+                                            group2time <- paste(x[2],time[j],sep="|")
+                                            group2timegroup2time <- paste(group2time,group2time,sep="_")
+
+                                            group1timegroup2timeA <- paste(group1time,group2time,sep="_")
+                                            group1timegroupp2timeB <- paste(group2time,group1time,sep="_")
+                                            
+                                            tmp3 <- which(GroupTime %in% c(group1timegroup2timeA,group1timegroupp2timeB),arr.ind=TRUE)
+                                            tmp4 <- which(GroupTime %in% group1timegroup1time,arr.ind=TRUE)
+                                            tmp5 <- which(GroupTime %in% group2timegroup2time,arr.ind=TRUE)
+                                            
+                                            rr <- Migt[tmp1,3]*Migt[tmp2,3]*(2*R[tmp3]-R[tmp4]-R[tmp5])
+                                            return(rr)
+                                        }
+                             )
+                 BGt[b,j] <- sum(d)/(N*(N-1))
+              }
+      }
+  colnames(BGt) <- time
+
+  save(BGt,file="./data/BGtQ23.rda")
+}
+````
+
+
+```{r,echo=FALSE}
+
+load("./data/BGtQ23.rda")
+# p-values
+
+pvGT1 <- round(length(which(BGt[-1,1]>BGt[1,1]))/(length(Rboot)-1),3)
+pvGT2 <- round(length(which(BGt[-1,2]>BGt[1,2]))/(length(Rboot)-1),3)
+pvGT3 <- round(length(which(BGt[-1,3]>BGt[1,3]))/(length(Rboot)-1),3)
+pvGT4 <- round(length(which(BGt[-1,4]>BGt[1,4]))/(length(Rboot)-1),3)
+pvGT5 <- round(length(which(BGt[-1,5]>BGt[1,5]))/(length(Rboot)-1),3)
+```
+
+Empirical distribution of $BG_t$: 
+
+
+```{r,echo=FALSE}
+par(mfrow=c(1,2))
+
+hist(BGt[-1,1],breaks=50,main=bquote(atop("Time 1","p-value"==.(pvGT1))),xlab=" ",ylim=c(0,220),cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BGt[1,1],col="red")
+
+hist(BGt[-1,2],breaks=50,main=bquote(atop("Time 2","p-value"==.(pvGT2))),xlim=c(min(BGt[,2]),max(BGt[,2])),ylim=c(0,220),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BGt[1,2],col="red")
+
+par(mfrow=c(1,2))
+
+hist(BGt[-1,3],breaks=50,main=bquote(atop("Time 3","p-value"==.(pvGT3))),xlim=c(min(BGt[,3]),max(BGt[,3])),ylim=c(0,220),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BGt[1,3],col="red")
+
+hist(BGt[-1,4],breaks=50,main=bquote(atop("Time 4","p-value"==.(pvGT4))),xlim=c(min(BGt[,4]),max(BGt[,4])),ylim=c(0,220),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BGt[1,4],col="red")
+
+hist(BGt[-1,5],breaks=50,main=bquote(atop("Time 5","p-value"==.(pvGT5))),xlim=c(min(BGt[,5]),max(BGt[,5])),ylim=c(0,220),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BGt[1,5],col="red")
+```
+
+```{r,echo=FALSE,message=FALSE,results='hide'}
+
+pdf("./figures/BGt-Q23.pdf",width=15,height=5)
+
+par(mfrow=c(1,5))
+
+hist(BGt[-1,1],breaks=50,main=bquote(atop("Time 1","p-value"==.(pvGT1))),xlab=" ",ylim=c(0,250),cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BGt[1,1],col="red")
+
+hist(BGt[-1,2],breaks=50,main=bquote(atop("Time 2","p-value"==.(pvGT2))),xlim=c(min(BGt[,2]),max(BGt[,2])),ylim=c(0,250),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BGt[1,2],col="red")
+
+hist(BGt[-1,3],breaks=50,main=bquote(atop("Time 3","p-value"==.(pvGT3))),xlim=c(min(BGt[,3]),max(BGt[,3])),ylim=c(0,250),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BGt[1,3],col="red")
+
+hist(BGt[-1,4],breaks=50,main=bquote(atop("Time 4","p-value"==.(pvGT4))),xlim=c(min(BGt[,4]),max(BGt[,4])),ylim=c(0,250),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BGt[1,4],col="red")
+
+hist(BGt[-1,5],breaks=50,main=bquote(atop("Time 5","p-value"==.(pvGT5))),xlim=c(min(BGt[,5]),max(BGt[,5])),ylim=c(0,250),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=BGt[1,5],col="red")
+
+dev.off()
+```
+
+Empirical distribution of $BG_t$: 
+
+```{r,echo=FALSE}
+
+
+plot(density(BGt[-1,1]),main=" ",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,ylim=c(0,45000))
+
+lines(density(BGt[-1,2]),col=2,lty=2)
+
+lines(density(BGt[-1,3]),col=3,lty=3)
+
+lines(density(BGt[-1,4]),col=4,lty=4)
+
+lines(density(BGt[-1,5]),col=5,lty=5)
+
+legend("topright",col=1:5,legend=c("Time 1","Time 2","Time 3","Time 4","Time 5"),lty=1:5)
+```
+
+
+
+```{r,echo=FALSE,message=FALSE,results='hide'}
+
+pdf("./figures/BGt-Q23-smooth-color.pdf",width=10,height=10)
+
+
+plot(density(BGt[-1,1]),main=" ",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,ylim=c(0,45000))
+
+lines(density(BGt[-1,2]),col=2,lty=2)
+
+lines(density(BGt[-1,3]),col=3,lty=3)
+
+lines(density(BGt[-1,4]),col=4,lty=4)
+
+lines(density(BGt[-1,5]),col=5,lty=5)
+
+legend("topright",col=1:5,legend=c("Time 1","Time 2","Time 3","Time 4","Time 5"),lty=1:5)
+
+dev.off()
+
+
+pdf("./figures/BGt-Q23-smooth-bw.pdf",width=10,height=10)
+
+
+plot(density(BGt[-1,1]),main=" ",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,ylim=c(0,45000))
+
+lines(density(BGt[-1,2]),col=1,lty=2)
+
+lines(density(BGt[-1,3]),col=1,lty=3)
+
+lines(density(BGt[-1,4]),col=1,lty=4)
+
+lines(density(BGt[-1,5]),col=1,lty=5)
+
+legend("topright",col=1,legend=c("Time 1","Time 2","Time 3","Time 4","Time 5"),lty=1:5)
+
+dev.off()
+```
+
+
+We then calculate $\mathbf{T}_n=\mathbf{C}\mathbf{B}_n$. First, we standardize each $BG_t$.
+
+```{r}
+Tn1 <- (BGt[,2]-mean(BGt[,2]))/sd(BGt[,2]) - (BGt[,1]-mean(BGt[,1]))/sd(BGt[,1])
+Tn2 <- (BGt[,3]-mean(BGt[,3]))/sd(BGt[,3]) - (BGt[,1]-mean(BGt[,1]))/sd(BGt[,1])
+Tn3 <- (BGt[,4]-mean(BGt[,4]))/sd(BGt[,4]) - (BGt[,1]-mean(BGt[,1]))/sd(BGt[,1])
+Tn4 <- (BGt[,5]-mean(BGt[,5]))/sd(BGt[,5]) - (BGt[,1]-mean(BGt[,1]))/sd(BGt[,1])
+```
+
+
+Empirical distribution of $T_{n1}$-$T_{n4}$.
+
+
+```{r,echo=FALSE}
+par(mfrow=c(2,2))
+hist(Tn1[-1],breaks=50,main="Tn1",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn1[1],col="red")
+
+hist(Tn2[-1],breaks=50,main="Tn2",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn2[1],col="red")
+
+hist(Tn3[-1],breaks=50,main="Tn3",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn3[1],col="red")
+
+hist(Tn4[-1],breaks=50,main="Tn4",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn4[1],col="red")
+```
+
+```{r,echo=FALSE}
+pvTn1 <- round(length(which(Tn1[-1]>Tn1[1]))/(length(Rboot)-1),3)
+pvTn2 <- round(length(which(Tn2[-1]>Tn2[1]))/(length(Rboot)-1),3)
+pvTn3 <- round(length(which(Tn3[-1]>Tn3[1]))/(length(Rboot)-1),3)
+pvTn4 <- round(length(which(Tn4[-1]>Tn4[1]))/(length(Rboot)-1),3)
+```
+
+$T_{n1}$ p-value is `r pvTn1`.
+
+$T_{n2}$ p-value is `r pvTn2`.
+
+$T_{n3}$ p-value is `r pvTn3`.
+
+$T_{n4}$ p-value is `r pvTn4`.
+
+
+
+```{r,echo=FALSE}
+plot(density(Tn1[-1]),main=" ",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,ylim=c(0,.4))
+
+lines(density(Tn2[-1]),lty=2)
+
+lines(density(Tn3[-1]),lty=3)
+
+lines(density(Tn4[-1]),lty=4)
+
+legend("topright",col=1,legend=c(expression(T[n1]),expression(T[n2]),expression(T[n3]),expression(T[n4])),lty=1:4)
+
+```
+
+
+
+```{r,echo=FALSE,message=FALSE,results='hide'}
+
+pdf("./figures/Tn-Q23-smooth-bw.pdf",width=10,height=10)
+
+plot(density(Tn1[-1]),main=" ",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,ylim=c(0,.4))
+
+lines(density(Tn2[-1]),lty=2)
+
+lines(density(Tn3[-1]),lty=3)
+
+lines(density(Tn4[-1]),lty=4)
+
+legend("topright",col=1,legend=c(expression(T[n1]),expression(T[n2]),expression(T[n3]),expression(T[n4])),lty=1:4)
+
+dev.off()
+
+```
+
+
+```{r,echo=FALSE,message=FALSE,results='hide'}
+pdf("./figures/Tn1.pdf",width=10,height=10)
+hist(Tn1[-1],breaks=50,main="",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn1[1],col="red")
+dev.off()
+
+pdf("./figures/Tn2.pdf",width=10,height=10)
+hist(Tn2[-1],breaks=50,main="",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn2[1],col="red")
+dev.off()
+
+pdf("./figures/Tn3.pdf",width=10,height=10)
+hist(Tn3[-1],breaks=50,main="",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn3[1],col="red")
+dev.off()
+
+pdf("./figures/Tn4.pdf",width=10,height=10)
+hist(Tn4[-1],breaks=50,main="",xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5)
+abline(v=Tn4[1],col="red")
+dev.off()
+```
+
+Next, we calculate $\cal{L}_n$:
+
+
+```{r,echo=TRUE}
+Tn <- cbind(Tn1,Tn2,Tn3,Tn4)
+source("./function/Ln.R")
+Ln1 <- Ln(Tn,n)  
+pvLn <- round(length(which(Ln1[-1]>Ln1[1]))/(length(Ln1)-1),3)
+```
+
+
+The observed $\cal{L}_n$ is `r round(Ln1[1],2)`.
+
+Empirical distribution of $\cal{L}_n$:
+
+
+```{r,echo=FALSE}
+hist(Ln1,breaks=100,main=bquote(atop(L[n],"p-value"==.(pvLn))),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,prob=TRUE)
+abline(v=Ln1[1],col="red")
+```
+
+```{r,echo=FALSE,message=FALSE,results='hide'}
+pdf("./figures/Ln_Q23.pdf",width=7,height=7)
+hist(Ln1,breaks=100,main=bquote(atop(L[n],"p-value"==.(pvLn))),xlab=" ",cex.lab=1.5,cex.axis=1.5,cex.main=1.5,prob=TRUE)
+abline(v=Ln1[1],col="red")
+dev.off()
+```
+
+
+
