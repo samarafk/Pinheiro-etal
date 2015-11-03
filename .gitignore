@@ -4,3 +4,5 @@
 *.history
 
 application1/.Rhistory
+
+simulation/.Rhistory
