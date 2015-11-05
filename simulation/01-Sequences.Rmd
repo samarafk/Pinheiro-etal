@@ -11,6 +11,9 @@ Generating the sequences for a population with 4 groups
 ```{r,echo=FALSE}
 library(phyclust, quiet = TRUE)
 
+if (!file.exists("./results/data_seq_k_100.rda") | !file.exists("./results/data_seq_k_500.rda") | !file.exists("./results/data_seq_k_2000.rda") | !file.exists("./results/data_seq_k_10000.rda"))
+
+{
 k <- c(100,500,2000,10000) 
 
 for (i in k)
@@ -31,80 +34,247 @@ for (i in k)
   save(data_seq,file=paste0("./results/data_seq_k_",i,".rda"))
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-#### checando se D11 bar e D22 bar menores que D12 bar
-library(ape)
-
-G1 <- data_seq["seq"][[1]][data_seq["Grupo"][[1]]=="d1",] # sequencias só do grupo 1
-
-a <- mean(dist.gene(G1[1:1000,]))
-
-
-
-G2 <- data_seq["seq"][[1]][data_seq["Grupo"][[1]]=="d2",] # sequencias só do grupo 2
-
-
-b <- mean(dist.gene(G2[1:1000,]))
-
-d <- matrix(NA,1000,1000)
-for (i in 1:1000)
-{
-  for (j in 1:1000)
-  {
-    d[i,j] <- dist.gene(rbind(G1[i,],G2[j,]))
-  }
 }
 
-mean(d)
+
+G2_1 <- c(10,10)
+G2_2 <- c(10,20)
+G2_3 <- c(10,50)
+G2_4 <- c(10,100)
+
+G2_5 <- c(20,20)
+G2_6 <- c(20,50)
+G2_7 <- c(20,100)
+
+G2_8 <- c(50,50)
+G2_9 <- c(50,100)
+
+G2_10 <- c(100,100)
+
+NG2 <- list(G2_1=G2_1,G2_2=G2_2,G2_3=G2_3,G2_4=G2_4,G2_5=G2_5,
+           G2_6=G2_6,G2_7=G2_7,G2_8=G2_8,G2_9=G2_9,G2_10=G2_10) # configurations of number of sequences per group when G=2
+
+G3_1 <- c(10,10,10)
+G3_2 <- c(10,20,100)
+G3_3 <- c(10,50,100)
+G3_4 <- c(50,50,100)
+G3_5 <- c(50,100,100)
+G3_6 <- c(100,100,100)
+
+NG3 <- list(G3_1=G3_1,G3_2=G3_2,G3_3=G3_3,G3_4=G3_4,G3_5=G3_5,
+           G3_6=G3_6)  # configurations of number of sequences per group when G=3
 
 
-apply(G1,2,function(x) table(x)/25000)
+G4_1 <- c(10,10,10,10)
+G4_2 <- c(10,10,20,50)
+G4_3 <- c(10,10,20,100)
+G4_4 <- c(10,10,50,50)
+G4_5 <- c(10,10,50,100)
+G4_6 <- c(10,20,50,100)
+G4_7 <- c(50,50,50,50)
 
-
-D11barra <- mean(dist.gene(G1[1:1000,],method="percentage")) # por sítio percentage
-t=1
-alpha = D11barra/(6*t)
-
-t=1
-st <- .25*(1-exp(-4*alpha*t))
-rt <- .25*(1+3*exp(-4*alpha*t))
-
-set.seed(1)
-n1 <- 10
-G1sim <- G1[sample(1:dim(G1)[1],n1,replace=FALSE),]
-
-seq1_tempo0 <- G1sim[i,] # seq i no tempo 0
-
-tmp <- matrix(NA,ncol=length(seq1_tempo0),nrow=n1) # seq no tempo 1
-
-tmp1 <- rmultinom(n=sum(seq1_tempo0==0),size=1,prob=c(rt,st,st,st))
-tmp2 <- apply(tmp1,2,function(x) which(x>0))-1
-tmp[i,seq1_tempo0==0] <- tmp2 # sequence i
-
-
-tmp1 <- rmultinom(n=sum(seq1_tempo0==1),size=1,prob=c(st,rt,st,st))
-tmp2 <- apply(tmp1,2,function(x) which(x>0))-1
-tmp[i,seq1_tempo0==1] <- tmp2
-
-tmp1 <- rmultinom(n=sum(seq1_tempo0==2),size=1,prob=c(st,st,rt,st))
-tmp2 <- apply(tmp1,2,function(x) which(x>0))-1
-tmp[i,seq1_tempo0==2] <- tmp2
-
-
-tmp1 <- rmultinom(n=sum(seq1_tempo0==3),size=1,prob=c(st,st,st,rt))
-tmp2 <- apply(tmp1,2,function(x) which(x>0))-1
-tmp[i,seq1_tempo0==3] <- tmp2
+NG4 <- list(G4_1=G4_1,G4_2=G4_2,G4_3=G4_3,G4_4=G4_4,G4_5=G4_5,
+           G4_6=G4_6,G4_7=G4_7)  # configurations of number of sequences per group when G=4
 
 ```
+
+```{r,echo=FALSE}
+
+
+i=100
+load(paste0("./results/data_seq_k_",i,".rda"))
+
+
+set.seed(2015)
+tmp1 <- sample(which(data_seq["Grupo"][[1]]=="d1"),1000,replace=FALSE)
+tmp2 <- sample(which(data_seq["Grupo"][[1]]=="d1"),1000,replace=FALSE) # SOB H0
+tmp3 <- sample(which(data_seq["Grupo"][[1]]=="d1"),1000,replace=FALSE) # SOB H0
+tmp4 <- sample(which(data_seq["Grupo"][[1]]=="d1"),1000,replace=FALSE) # SOB H0
+
+
+G1t <- data_seq["seq"][[1]][tmp1,] # sequencias amostradas só do grupo 1
+G2t <- data_seq["seq"][[1]][tmp2,] # sequencias amostradas só do grupo 2
+G3t <- data_seq["seq"][[1]][tmp3,] # sequencias amostradas só do grupo 3
+G4t <- data_seq["seq"][[1]][tmp4,] # sequencias amostradas só do grupo 4
+
+
+D11barra <- mean(dist.gene(G1t,method="percentage")) # proporcao de diferenças entre as seq por sítio # sob HO
+#D22barra <- mean(dist.gene(G2t,method="percentage")) # proporcao de diferenças entre as seq por sítio
+#D33barra <- mean(dist.gene(G3t,method="percentage")) # por sítio percentage
+#D44barra <- mean(dist.gene(G4t,method="percentage")) # por sítio percentage
+
+```
+
+
+
+```{r,echo=FALSE}
+
+nuc <- c("A","C","G","T") # corresponding to org.code 0 1 2 3
+
+
+
+simulacaoG2 <- list() # simulacoes para todos os casos em que G=2  
+
+for (j in 1:length(NG2))
+  
+  
+{
+
+n <- NG2[[j]]
+
+set.seed(2015)
+tmp1 <- sample(which(data_seq["Grupo"][[1]]=="d1"),n[1],replace=FALSE)
+tmp2 <- sample(which(data_seq["Grupo"][[1]]=="d1"),n[2],replace=FALSE)
+
+G1 <- data_seq["seq"][[1]][tmp1,] # sequencias amostradas só do grupo 1
+G2 <- data_seq["seq"][[1]][tmp2,] # sequencias amostradas só do grupo 2
+
+
+simulacao <- list(Grupo=c(rep("d1",length(tmp1)),rep("d2",length(tmp2))),
+                  seq0 = rbind(G1,G2))
+
+seqt <- simulacao
+for (t in 1:5)
+{
+  seq <- matrix(NA,ncol=dim(simulacao[["seq0"]])[2],nrow=dim(simulacao[["seq0"]])[1])
+#   for (h in 1:dim(simulacao[["seq0"]])[1])
+#     {
+#     #alpha <- ifelse(simulacao[["Grupo"]][h]=="d1", D11barra/(6*t), D22barra/(6*t))
+#     alpha <- D11barra/(6*t)
+# 
+#     st <- .25*(1-exp(-4*alpha*t)) # JC
+#     rt <- .25*(1+3*exp(-4*alpha*t)) # JC
+#     tmp1 <- rmultinom(n=sum(simulacao[["seq0"]][h,]=="A"),size=1,prob=c(rt,st,st,st))
+#     tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+#     seq[h,simulacao[["seq0"]][h,]=="A"] <- tmp2
+#     
+#     tmp1 <- rmultinom(n=sum(simulacao[["seq0"]][h,]=="C"),size=1,prob=c(st,rt,st,st))
+#     tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+#     seq[h,simulacao[["seq0"]][h,]=="C"] <- tmp2
+#     
+#     tmp1 <- rmultinom(n=sum(simulacao[["seq0"]][h,]=="G"),size=1,prob=c(st,st,rt,st))
+#     tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+#     seq[h,simulacao[["seq0"]][h,]=="G"] <- tmp2
+#     
+#     tmp1 <- rmultinom(n=sum(simulacao[["seq0"]][h,]=="T"),size=1,prob=c(st,st,st,rt))
+#     tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+#     seq[h,simulacao[["seq0"]][h,]=="T"] <- tmp2
+#   }
+  
+  alpha <- D11barra/(6*t)
+  st <- .25*(1-exp(-4*alpha*t)) # JC
+  rt <- .25*(1+3*exp(-4*alpha*t)) # JC
+  
+  tmp1 <- rmultinom(n=sum(simulacao[["seq0"]]=="A"),size=1,prob=c(rt,st,st,st))
+  tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+  seq[simulacao[["seq0"]]=="A"] <- tmp2
+  
+  tmp1 <- rmultinom(n=sum(simulacao[["seq0"]]=="C"),size=1,prob=c(st,rt,st,st))
+  tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+  seq[simulacao[["seq0"]]=="C"] <- tmp2
+    
+  tmp1 <- rmultinom(n=sum(simulacao[["seq0"]]=="G"),size=1,prob=c(st,st,rt,st))
+  tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+  seq[simulacao[["seq0"]]=="G"] <- tmp2
+    
+  tmp1 <- rmultinom(n=sum(simulacao[["seq0"]]=="T"),size=1,prob=c(st,st,st,rt))
+  tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+  seq[simulacao[["seq0"]]=="T"] <- tmp2
+  
+  
+  nome <- paste("seq", t, sep = "")
+  tt <- list(seq)
+  names(tt) <- nome
+  seqt <- append(seqt,tt)
+}
+
+
+nome <- names(NG2)[j]
+tt1 <- list(seqt)
+names(tt1) <- nome
+simulacaoG2 <- append(simulacaoG2,tt1)
+
+}
+
+
+
+
+
+
+
+
+simulacaoG3 <- list() # simulacoes para todos os casos em que G=3
+
+for (j in 1:length(NG3))
+
+{
+
+n <- NG3[[j]]
+
+set.seed(2015)
+tmp1 <- sample(which(data_seq["Grupo"][[1]]=="d1"),n[1],replace=FALSE)
+tmp2 <- sample(which(data_seq["Grupo"][[1]]=="d1"),n[2],replace=FALSE) # SOB H0
+tmp3 <- sample(which(data_seq["Grupo"][[1]]=="d1"),n[3],replace=FALSE) # SOB H0
+
+
+G1 <- data_seq["seq"][[1]][tmp1,] # sequencias amostradas só do grupo 1
+G2 <- data_seq["seq"][[1]][tmp2,] # sequencias amostradas só do grupo 2
+G3 <- data_seq["seq"][[1]][tmp3,] # sequencias amostradas só do grupo 3
+
+
+simulacao <- list(Grupo=c(data_seq["Grupo"][[1]][tmp1],data_seq["Grupo"][[1]][tmp2],
+                  data_seq["Grupo"][[1]][tmp3]),
+                  seq0 = rbind(G1,G2,G3))
+
+
+simulacao <- list(Grupo=c(rep("d1",length(tmp1)),rep("d2",length(tmp2)),
+                          rep("d3",length(tmp3))),
+                  seq0 = rbind(G1,G2,G3))
+
+# alpha estimado usando pag 130 livro Hildete (5.8)
+
+seqt <- simulacao
+for (t in 1:5)
+{
+  
+  seq <- matrix(NA,ncol=dim(simulacao[["seq0"]])[2],nrow=dim(simulacao[["seq0"]])[1])
+
+  alpha <- D11barra/(6*t)
+    st <- .25*(1-exp(-4*alpha*t))
+    rt <- .25*(1+3*exp(-4*alpha*t))
+    tmp1 <- rmultinom(n=sum(simulacao[["seq0"]]=="A"),size=1,prob=c(rt,st,st,st))
+    tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+    seq[simulacao[["seq0"]]=="A"] <- tmp2
+    
+    tmp1 <- rmultinom(n=sum(simulacao[["seq0"]]=="C"),size=1,prob=c(st,rt,st,st))
+    tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+    seq[simulacao[["seq0"]]=="C"] <- tmp2
+    
+    tmp1 <- rmultinom(n=sum(simulacao[["seq0"]]=="G"),size=1,prob=c(st,st,rt,st))
+    tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+    seq[simulacao[["seq0"]]=="G"] <- tmp2
+    
+    tmp1 <- rmultinom(n=sum(simulacao[["seq0"]]=="T"),size=1,prob=c(st,st,st,rt))
+    tmp2 <- apply(tmp1,2,function(x) nuc[which(x>0)])
+    seq[simulacao[["seq0"]]=="T"] <- tmp2
+
+  nome <- paste("seq", t, sep = "")
+  tt <- list(seq)
+  names(tt) <- nome
+  seqt <- append(seqt,tt)
+}
+
+nome <- names(NG3)[j]
+tt1 <- list(seqt)
+names(tt1) <- nome
+simulacaoG3 <- append(simulacaoG3,tt1)
+
+}
+
+```
+
+
+
+
+
+
