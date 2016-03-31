@@ -78,9 +78,11 @@ da.G.equal <- read.seqgen(seq.G.equal)
 seq <- da.G.equal$org
 names <- da.G.equal$seqname
 
-Grupo <- substr(da.G.equal$seqname,1,2) 
+Grupo <- substr(da.G.equal$seqname,1,2)
 
 data_seq<-list(seqname=names,seq=seq,Grupo=Grupo)
+
+
 
 
 

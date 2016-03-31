@@ -126,8 +126,9 @@ set.seed(2015)
 tmp1 <- sample(which(data_seq["Grupo"][[1]]=="d1"),n[1],replace=FALSE)
 tmp2 <- sample(which(data_seq["Grupo"][[1]]=="d1"),n[2],replace=FALSE)
 
-G1 <- data_seq["seq"][[1]][tmp1,] # sequencias amostradas só do grupo 1
-G2 <- data_seq["seq"][[1]][tmp2,] # sequencias amostradas só do grupo 2
+# Sob H0
+G1 <- data_seq["seq"][[1]][tmp1,] # sequencias amostradas para o grupo 1
+G2 <- data_seq["seq"][[1]][tmp2,] # sequencias amostradas para o grupo 2
 
 
 simulacao <- list(Grupo=c(rep("d1",length(tmp1)),rep("d2",length(tmp2))),
@@ -272,8 +273,6 @@ simulacaoG3 <- append(simulacaoG3,tt1)
 }
 
 ```
-
-
 
 
 
