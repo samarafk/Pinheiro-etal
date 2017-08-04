@@ -38,6 +38,7 @@ We will work only with sequences from Region V3.
 if (!file.exists("./data/V3.rda"))
 
   {
+  load("./data/DataInfo.rda")
   library(Biostrings)
   library(DECIPHER)
   tmp <- which(DataInfo[,"Region"]=="V3")
